@@ -1,2 +1,15 @@
 Flask==3.0.0
 python-dotenv==1.0.0
+
+numpy
+torch
+transformers
+faiss-cpu
+langchain>=1.0.0
+langchain-openai>=1.0.0
+langchain-community>=0.4.0
+python-dotenv
+PyPDF2
+pycryptodome
+scikit-learn
+joblib
