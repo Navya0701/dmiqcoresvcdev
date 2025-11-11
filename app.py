@@ -100,11 +100,28 @@ def diagnostics():
         }), 500
 
 
-@app.route('/api/v1/testq')
+@app.route('/api/v1/testq', methods=['GET', 'POST'])
 def test_question():
-    """Test queue endpoint"""
+    """Query endpoint - accepts question as parameter"""
     try:
-        logger.info("Starting test question query...")
+        # Get question from query parameter or request body
+        if request.method == 'GET':
+            question = request.args.get('question')
+        else:  # POST
+            data = request.get_json(silent=True)
+            question = data.get('question') if data else None
+        
+        # Validate question parameter
+        if not question:
+            return jsonify({
+                'error': 'Missing question parameter',
+                'usage': {
+                    'GET': '/api/v1/testq?question=Your question here',
+                    'POST': '{"question": "Your question here"}'
+                }
+            }), 400
+        
+        logger.info(f"Received question: {question}")
         logger.info(f"Vector store path: {vecstore_path}")
         
         # Check if vector store path exists
@@ -116,17 +133,41 @@ def test_question():
                 'message': 'Please ensure the Azure File Share is mounted correctly'
             }), 500
         
-        # Initialize RAG system
-        logger.info("Initializing RAG system...")
-        system = RAGQASystem(
-            stores_base=vecstore_path,
-            model="gpt-4o"
-        )
+        # Get available memory info
+        import psutil
+        memory = psutil.virtual_memory()
+        logger.info(f"Available memory: {memory.available / (1024**3):.2f} GB / {memory.total / (1024**3):.2f} GB")
         
-        # Query
-        logger.info("Executing query...")
+        # Check if we have enough memory (need at least 2GB available)
+        if memory.available < 2 * 1024**3:
+            logger.warning(f"Low memory: only {memory.available / (1024**3):.2f} GB available")
+            return jsonify({
+                'error': 'Insufficient memory',
+                'available_gb': round(memory.available / (1024**3), 2),
+                'total_gb': round(memory.total / (1024**3), 2),
+                'message': 'App Service plan needs more RAM. Consider upgrading to P2V2 or P3V2.'
+            }), 507  # Insufficient Storage
+        
+        # Initialize RAG system with memory monitoring
+        logger.info("Initializing RAG system...")
+        try:
+            system = RAGQASystem(
+                stores_base=vecstore_path,
+                model="gpt-4o"
+            )
+        except MemoryError as me:
+            logger.error(f"Memory error during RAG initialization: {str(me)}")
+            return jsonify({
+                'error': 'Memory allocation failed',
+                'message': 'FAISS index files are too large for current App Service plan',
+                'solution': 'Scale up to P3V2 (14GB RAM) or use Azure Container Apps with more memory',
+                'available_memory_gb': round(memory.available / (1024**3), 2)
+            }), 507
+        
+        # Query with the provided question
+        logger.info(f"Executing query for: {question}")
         result = system.query(
-            question="What are the indications for Barrett's esophagus screening?",
+            question=question,
             top_k=10,
             per_shard_k=10,
             include_history=False
