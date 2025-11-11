@@ -10,6 +10,9 @@ from src.rag_qa_enhanced import RAGQASystem
 # Load environment variables
 load_dotenv()
 
+# Path to vector store
+vecstore_path = '/home/filesharemount'
+
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -53,7 +56,7 @@ def test_question():
 
     # Initialize
     system = RAGQASystem(
-        stores_base=r"rag_store_meddata_sharded",
+        stores_base=r"vecstore_path",
         model="gpt-4o"
     )
 
