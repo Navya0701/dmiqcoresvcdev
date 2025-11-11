@@ -11,10 +11,10 @@ from datetime import datetime
 import heapq
 import joblib
 
-from agents.embedding_agent import EmbeddingAgent
-from utils.vector_store import FaissStore
-from utils.pdf_reader import read_pdf, read_text_file
-from utils.text_chunker import chunk_text as chunk_text_fn
+from src.agents.embedding_agent import EmbeddingAgent
+from src.utils.vector_store import FaissStore
+from src.utils.pdf_reader import read_pdf, read_text_file
+from src.utils.text_chunker import chunk_text as chunk_text_fn
 
 try:
     from langchain_openai import ChatOpenAI

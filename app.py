@@ -5,6 +5,7 @@ This is the service that the front end app calls
 from flask import Flask, jsonify, request
 from dotenv import load_dotenv
 import os
+from src.rag_qa_enhanced import RAGQASystem
 
 # Load environment variables
 load_dotenv()
@@ -45,6 +46,32 @@ def api_status():
         'status': 'operational'
     }), 200
 
+
+@app.route('/api/v1/testq')
+def test_question():
+    """Test queue endpoint"""
+
+    # Initialize
+    system = RAGQASystem(
+        stores_base=r"rag_store_meddata_sharded",
+        model="gpt-4o"
+    )
+
+    # Query
+    result = system.query(
+        question="What are the indications for Barrett's esophagus screening?",
+        top_k=10,
+        per_shard_k=10,
+        include_history=False
+    )
+
+    # Access results (for logging)
+    print(result['answer'])
+    print(f"Cost: ${result['cost']:.4f}")
+    print(f"Citations: {len(result['citations'])}")
+    
+    # Return the full result as JSON
+    return jsonify(result), 200
 
 @app.route('/api/v1/data', methods=['GET', 'POST'])
 def handle_data():
