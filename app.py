@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Path to vector store
-vecstore_path = os.getenv('VECSTORE_PATH', '/home/filesharemount')
+vecstore_path = os.getenv('VECSTORE_PATH', '/mnt/vectorstore')
 logger.info(f"Vector store path: {vecstore_path}")
 
 # Initialize Flask app
@@ -197,7 +197,7 @@ def handle_data():
             ]
         }), 200
     
-    elif request.method == 'POST':
+    elif request.method == 'POST']:
         data = request.get_json(silent=True)
         if not data:
             return jsonify({'error': 'No data provided'}), 400
@@ -227,8 +227,5 @@ def internal_error(error):
 
 
 if __name__ == '__main__':
-    app.run(
-        host=app.config['HOST'],
-        port=app.config['PORT'],
-        debug=app.config['DEBUG']
-    )
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
