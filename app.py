@@ -20,10 +20,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Path to vector store (GCS Fuse mount path)
+# 👉 Correct vector store path (use parent folder)
 vecstore_path = os.getenv(
     'VECSTORE_PATH',
-    '/mnt/medical_data/American - Gastroenterology'
+    '/mnt/medical_data'
 )
 
 logger.info(f"Vector store path: {vecstore_path}")
@@ -39,7 +39,6 @@ app.config['PORT'] = int(os.getenv('FLASK_PORT', 5000))
 
 @app.route('/')
 def index():
-    """Root endpoint - API information"""
     return jsonify({
         'service': 'DMIQ Core Service',
         'version': '1.0.0',
@@ -49,7 +48,6 @@ def index():
 
 @app.route('/health')
 def health():
-    """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
         'service': 'dmiqcoresvc'
@@ -58,7 +56,6 @@ def health():
 
 @app.route('/api/v1/status')
 def api_status():
-    """API status endpoint"""
     return jsonify({
         'api_version': 'v1',
         'status': 'operational'
@@ -67,7 +64,6 @@ def api_status():
 
 @app.route('/api/v1/diagnostics')
 def diagnostics():
-    """Diagnostics endpoint - check environment and file system"""
     try:
         diagnostics_info = {
             'vecstore_path': vecstore_path,
@@ -80,7 +76,7 @@ def diagnostics():
             'current_directory': os.getcwd(),
             'python_version': os.sys.version,
         }
-        
+
         if os.path.exists(vecstore_path):
             try:
                 contents = os.listdir(vecstore_path)
@@ -105,7 +101,6 @@ def diagnostics():
 
 @app.route('/api/v1/testq', methods=['GET', 'POST'])
 def test_question():
-    """Query endpoint - accepts question as parameter"""
     try:
         if request.method == 'GET':
             question = request.args.get('question')
@@ -134,10 +129,9 @@ def test_question():
             }), 500
 
         memory = psutil.virtual_memory()
-        logger.info(f"Available memory: {memory.available / (1024**3):.2f} GB / {memory.total / (1024**3):.2f} GB")
+        logger.info(f"Available memory: {memory.available / (1024**3):.2f} GB")
 
         if memory.available < 2 * 1024**3:
-            logger.warning("Low memory detected")
             return jsonify({
                 'error': 'Insufficient memory',
                 'available_gb': round(memory.available / (1024**3), 2),
@@ -155,11 +149,9 @@ def test_question():
             logger.error(f"Memory error: {str(me)}")
             return jsonify({
                 'error': 'Memory allocation failed',
-                'message': 'Index too large for current memory',
-                'available_memory_gb': round(memory.available / (1024**3), 2)
+                'message': 'Index too large for current memory'
             }), 507
 
-        logger.info(f"Executing query for: {question}")
         result = system.query(
             question=question,
             top_k=10,
@@ -168,13 +160,11 @@ def test_question():
         )
 
         logger.info(f"Query successful. Cost: ${result['cost']:.4f}")
-
         return jsonify(result), 200
 
     except Exception as e:
         error_details = traceback.format_exc()
-        logger.error(f"Error in test_question: {str(e)}")
-        logger.error(error_details)
+        logger.error(f"Error: {str(e)}")
 
         if app.config['DEBUG']:
             return jsonify({
@@ -192,7 +182,6 @@ def test_question():
 
 @app.route('/api/v1/data', methods=['GET', 'POST'])
 def handle_data():
-    """Example data endpoint"""
     if request.method == 'GET':
         return jsonify({
             'data': [
@@ -214,16 +203,13 @@ def handle_data():
 
 @app.errorhandler(404)
 def not_found(error):
-    """Handle 404 errors"""
     logger.warning(f"404 error: {request.url}")
     return jsonify({'error': 'Resource not found'}), 404
 
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle 500 errors"""
     logger.error(f"500 error: {str(error)}")
-    logger.error(traceback.format_exc())
     return jsonify({
         'error': 'Internal server error',
         'message': str(error) if app.config['DEBUG'] else 'An error occurred'
