@@ -8,6 +8,7 @@ import os
 import logging
 import traceback
 from src.rag_qa_enhanced import RAGQASystem
+import psutil
 
 # Load environment variables
 load_dotenv()
@@ -19,8 +20,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Path to vector store
-vecstore_path = os.getenv('VECSTORE_PATH', '/mnt/vectorstore')
+# Path to vector store (GCS Fuse mount path)
+vecstore_path = os.getenv(
+    'VECSTORE_PATH',
+    '/mnt/medical_data/American - Gastroenterology'
+)
+
 logger.info(f"Vector store path: {vecstore_path}")
 
 # Initialize Flask app
@@ -83,13 +88,13 @@ def diagnostics():
                 diagnostics_info['vecstore_item_count'] = len(contents)
             except Exception as e:
                 diagnostics_info['vecstore_error'] = str(e)
-        
+
         home_path = '/home'
         if os.path.exists(home_path):
             diagnostics_info['home_contents'] = os.listdir(home_path)
-        
+
         return jsonify(diagnostics_info), 200
-        
+
     except Exception as e:
         logger.error(f"Diagnostics error: {str(e)}")
         return jsonify({
@@ -107,7 +112,7 @@ def test_question():
         else:
             data = request.get_json(silent=True)
             question = data.get('question') if data else None
-        
+
         if not question:
             return jsonify({
                 'error': 'Missing question parameter',
@@ -116,31 +121,30 @@ def test_question():
                     'POST': '{"question": "Your question here"}'
                 }
             }), 400
-        
+
         logger.info(f"Received question: {question}")
         logger.info(f"Vector store path: {vecstore_path}")
-        
+
         if not os.path.exists(vecstore_path):
             logger.error(f"Vector store path does not exist: {vecstore_path}")
             return jsonify({
                 'error': 'Vector store not found',
                 'path': vecstore_path,
-                'message': 'Please ensure the Azure File Share is mounted correctly'
+                'message': 'GCS Fuse mount not found. Check Cloud Run > Volumes.'
             }), 500
-        
-        import psutil
+
         memory = psutil.virtual_memory()
         logger.info(f"Available memory: {memory.available / (1024**3):.2f} GB / {memory.total / (1024**3):.2f} GB")
-        
+
         if memory.available < 2 * 1024**3:
-            logger.warning(f"Low memory: only {memory.available / (1024**3):.2f} GB available")
+            logger.warning("Low memory detected")
             return jsonify({
                 'error': 'Insufficient memory',
                 'available_gb': round(memory.available / (1024**3), 2),
                 'total_gb': round(memory.total / (1024**3), 2),
-                'message': 'App Service plan needs more RAM.'
+                'message': 'Increase Cloud Run memory allocation.'
             }), 507
-        
+
         logger.info("Initializing RAG system...")
         try:
             system = RAGQASystem(
@@ -148,13 +152,13 @@ def test_question():
                 model="gpt-4o"
             )
         except MemoryError as me:
-            logger.error(f"Memory error during RAG initialization: {str(me)}")
+            logger.error(f"Memory error: {str(me)}")
             return jsonify({
                 'error': 'Memory allocation failed',
-                'message': 'FAISS index too large',
+                'message': 'Index too large for current memory',
                 'available_memory_gb': round(memory.available / (1024**3), 2)
             }), 507
-        
+
         logger.info(f"Executing query for: {question}")
         result = system.query(
             question=question,
@@ -162,16 +166,16 @@ def test_question():
             per_shard_k=10,
             include_history=False
         )
-        
+
         logger.info(f"Query successful. Cost: ${result['cost']:.4f}")
-        
+
         return jsonify(result), 200
-        
+
     except Exception as e:
         error_details = traceback.format_exc()
         logger.error(f"Error in test_question: {str(e)}")
         logger.error(error_details)
-        
+
         if app.config['DEBUG']:
             return jsonify({
                 'error': str(e),
@@ -196,12 +200,12 @@ def handle_data():
                 {'id': 2, 'name': 'Sample 2'}
             ]
         }), 200
-    
-    elif request.method == 'POST']:
+
+    elif request.method == 'POST':
         data = request.get_json(silent=True)
         if not data:
             return jsonify({'error': 'No data provided'}), 400
-        
+
         return jsonify({
             'message': 'Data received successfully',
             'received_data': data
