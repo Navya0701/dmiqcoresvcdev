@@ -13,3 +13,4 @@ PyPDF2
 pycryptodome
 scikit-learn
 joblib
+psutil
