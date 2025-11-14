@@ -76,16 +76,14 @@ def diagnostics():
             'python_version': os.sys.version,
         }
         
-        # Check if vecstore path exists and list contents
         if os.path.exists(vecstore_path):
             try:
                 contents = os.listdir(vecstore_path)
-                diagnostics_info['vecstore_contents'] = contents[:20]  # First 20 items
+                diagnostics_info['vecstore_contents'] = contents[:20]
                 diagnostics_info['vecstore_item_count'] = len(contents)
             except Exception as e:
                 diagnostics_info['vecstore_error'] = str(e)
         
-        # Check home directory structure
         home_path = '/home'
         if os.path.exists(home_path):
             diagnostics_info['home_contents'] = os.listdir(home_path)
@@ -104,14 +102,12 @@ def diagnostics():
 def test_question():
     """Query endpoint - accepts question as parameter"""
     try:
-        # Get question from query parameter or request body
         if request.method == 'GET':
             question = request.args.get('question')
-        else:  # POST
+        else:
             data = request.get_json(silent=True)
             question = data.get('question') if data else None
         
-        # Validate question parameter
         if not question:
             return jsonify({
                 'error': 'Missing question parameter',
@@ -124,7 +120,6 @@ def test_question():
         logger.info(f"Received question: {question}")
         logger.info(f"Vector store path: {vecstore_path}")
         
-        # Check if vector store path exists
         if not os.path.exists(vecstore_path):
             logger.error(f"Vector store path does not exist: {vecstore_path}")
             return jsonify({
@@ -133,22 +128,19 @@ def test_question():
                 'message': 'Please ensure the Azure File Share is mounted correctly'
             }), 500
         
-        # Get available memory info
         import psutil
         memory = psutil.virtual_memory()
         logger.info(f"Available memory: {memory.available / (1024**3):.2f} GB / {memory.total / (1024**3):.2f} GB")
         
-        # Check if we have enough memory (need at least 2GB available)
         if memory.available < 2 * 1024**3:
             logger.warning(f"Low memory: only {memory.available / (1024**3):.2f} GB available")
             return jsonify({
                 'error': 'Insufficient memory',
                 'available_gb': round(memory.available / (1024**3), 2),
                 'total_gb': round(memory.total / (1024**3), 2),
-                'message': 'App Service plan needs more RAM. Consider upgrading to P2V2 or P3V2.'
-            }), 507  # Insufficient Storage
+                'message': 'App Service plan needs more RAM.'
+            }), 507
         
-        # Initialize RAG system with memory monitoring
         logger.info("Initializing RAG system...")
         try:
             system = RAGQASystem(
@@ -159,12 +151,10 @@ def test_question():
             logger.error(f"Memory error during RAG initialization: {str(me)}")
             return jsonify({
                 'error': 'Memory allocation failed',
-                'message': 'FAISS index files are too large for current App Service plan',
-                'solution': 'Scale up to P3V2 (14GB RAM) or use Azure Container Apps with more memory',
+                'message': 'FAISS index too large',
                 'available_memory_gb': round(memory.available / (1024**3), 2)
             }), 507
         
-        # Query with the provided question
         logger.info(f"Executing query for: {question}")
         result = system.query(
             question=question,
@@ -173,19 +163,15 @@ def test_question():
             include_history=False
         )
         
-        # Log results
-        logger.info(f"Query successful. Cost: ${result['cost']:.4f}, Citations: {len(result['citations'])}")
+        logger.info(f"Query successful. Cost: ${result['cost']:.4f}")
         
-        # Return the full result as JSON
         return jsonify(result), 200
         
     except Exception as e:
-        # Log the full error with traceback
         error_details = traceback.format_exc()
         logger.error(f"Error in test_question: {str(e)}")
-        logger.error(f"Full traceback:\n{error_details}")
+        logger.error(error_details)
         
-        # Return detailed error (only in debug mode for security)
         if app.config['DEBUG']:
             return jsonify({
                 'error': str(e),
@@ -199,11 +185,42 @@ def test_question():
                 'type': type(e).__name__
             }), 500
 
+
+# ============================================================
+# ✅ NEW ENDPOINT ADDED — TEST GCS FUSE MOUNT
+# ============================================================
+@app.route('/test-gcs')
+def test_gcs():
+    """Test GCS Fuse mount inside Cloud Run"""
+    try:
+        test_path = "/mnt/vectorstore/test-file.txt"
+        content = "GCS Fuse mount test successful!"
+
+        # Write a test file
+        with open(test_path, "w") as f:
+            f.write(content)
+
+        # Read the file back
+        with open(test_path, "r") as f:
+            read_content = f.read()
+
+        return jsonify({
+            "message": "GCS Fuse is working!",
+            "file_path": test_path,
+            "written_text": read_content
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "details": traceback.format_exc()
+        }), 500
+
+
 @app.route('/api/v1/data', methods=['GET', 'POST'])
 def handle_data():
-    """Example data endpoint that handles GET and POST requests"""
+    """Example data endpoint"""
     if request.method == 'GET':
-        # Return sample data
         return jsonify({
             'data': [
                 {'id': 1, 'name': 'Sample 1'},
@@ -212,12 +229,10 @@ def handle_data():
         }), 200
     
     elif request.method == 'POST':
-        # Handle data submission
         data = request.get_json(silent=True)
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
-        # Echo back the received data with a success message
         return jsonify({
             'message': 'Data received successfully',
             'received_data': data
