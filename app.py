@@ -186,37 +186,6 @@ def test_question():
             }), 500
 
 
-# ============================================================
-# ✅ NEW ENDPOINT ADDED — TEST GCS FUSE MOUNT
-# ============================================================
-@app.route('/test-gcs')
-def test_gcs():
-    """Test GCS Fuse mount inside Cloud Run"""
-    try:
-        test_path = "/mnt/vectorstore/test-file.txt"
-        content = "GCS Fuse mount test successful!"
-
-        # Write a test file
-        with open(test_path, "w") as f:
-            f.write(content)
-
-        # Read the file back
-        with open(test_path, "r") as f:
-            read_content = f.read()
-
-        return jsonify({
-            "message": "GCS Fuse is working!",
-            "file_path": test_path,
-            "written_text": read_content
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "details": traceback.format_exc()
-        }), 500
-
-
 @app.route('/api/v1/data', methods=['GET', 'POST'])
 def handle_data():
     """Example data endpoint"""
