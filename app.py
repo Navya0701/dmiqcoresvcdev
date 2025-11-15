@@ -69,7 +69,7 @@ def diagnostics():
             'vecstore_path': vecstore_path,
             'vecstore_exists': os.path.exists(vecstore_path),
             'environment': {
-                'OPENAI_API_KEY_SET': bool(os.getenv('OPENAI_API_KEY')),
+                'GOOGLE_API_KEY_SET': bool(os.getenv('GOOGLE_API_KEY')),
                 'VECSTORE_PATH': os.getenv('VECSTORE_PATH', 'not set'),
                 'FLASK_DEBUG': os.getenv('FLASK_DEBUG', 'not set'),
             },
@@ -143,7 +143,7 @@ def test_question():
         try:
             system = RAGQASystem(
                 stores_base=vecstore_path,
-                model="gpt-4o"
+                model="gemini-pro"
             )
         except MemoryError as me:
             logger.error(f"Memory error: {str(me)}")
