@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 import os
 import logging
 import traceback
-from src.rag_qa_enhanced import RAGQASystem
 import psutil
+from src.rag_qa_enhanced import RAGQASystem
 
 # Load environment variables
 load_dotenv()
@@ -20,23 +20,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 👉 Correct vector store path (use parent folder)
-vecstore_path = os.getenv(
-    'VECSTORE_PATH',
-    '/mnt/medical_data'
-)
-
+# Vector store path
+vecstore_path = os.getenv('VECSTORE_PATH', '/mnt/medical_data')
 logger.info(f"Vector store path: {vecstore_path}")
 
 # Initialize Flask app
 app = Flask(__name__)
-
-# Configuration
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-app.config['HOST'] = os.getenv('FLASK_HOST', '0.0.0.0')
-app.config['PORT'] = int(os.getenv('FLASK_PORT', 5000))
+
+# ---------------------------------------------------------------
+# ⭐ FIX: Initialize RAG system ONCE at container startup
+# ---------------------------------------------------------------
+RAG_SYSTEM = None
+
+try:
+    logger.info("🔄 Initializing RAG system ONCE at startup...")
+
+    if not os.path.exists(vecstore_path):
+        logger.error(f"❌ Vector store path does not exist: {vecstore_path}")
+    else:
+        RAG_SYSTEM = RAGQASystem(
+            stores_base=vecstore_path,
+            model="gpt-4o"
+        )
+        logger.info("✅ RAG system initialized successfully.")
+
+except Exception as e:
+    logger.error(f"❌ Failed to initialize RAG system during startup: {str(e)}")
 
 
+# ---------------------------------------------------------------
+# Basic routes
+# ---------------------------------------------------------------
 @app.route('/')
 def index():
     return jsonify({
@@ -48,174 +63,106 @@ def index():
 
 @app.route('/health')
 def health():
-    return jsonify({
-        'status': 'healthy',
-        'service': 'dmiqcoresvc'
-    }), 200
+    return jsonify({'status': 'healthy'}), 200
 
 
 @app.route('/api/v1/status')
-def api_status():
-    return jsonify({
-        'api_version': 'v1',
-        'status': 'operational'
-    }), 200
+def status():
+    return jsonify({'api_version': 'v1', 'status': 'operational'}), 200
 
 
+# ---------------------------------------------------------------
+# Diagnostics endpoint
+# ---------------------------------------------------------------
 @app.route('/api/v1/diagnostics')
 def diagnostics():
     try:
-        diagnostics_info = {
+        info = {
             'vecstore_path': vecstore_path,
             'vecstore_exists': os.path.exists(vecstore_path),
-            'environment': {
-                'OPENAI_API_KEY_SET': bool(os.getenv('OPENAI_API_KEY')),
-                'VECSTORE_PATH': os.getenv('VECSTORE_PATH', 'not set'),
-                'FLASK_DEBUG': os.getenv('FLASK_DEBUG', 'not set'),
-            },
-            'current_directory': os.getcwd(),
+            'rag_initialized': RAG_SYSTEM is not None,
             'python_version': os.sys.version,
+            'cwd': os.getcwd()
         }
 
         if os.path.exists(vecstore_path):
-            try:
-                contents = os.listdir(vecstore_path)
-                diagnostics_info['vecstore_contents'] = contents[:20]
-                diagnostics_info['vecstore_item_count'] = len(contents)
-            except Exception as e:
-                diagnostics_info['vecstore_error'] = str(e)
+            contents = os.listdir(vecstore_path)
+            info['vecstore_contents'] = contents[:20]
+            info['vecstore_count'] = len(contents)
 
-        home_path = '/home'
-        if os.path.exists(home_path):
-            diagnostics_info['home_contents'] = os.listdir(home_path)
-
-        return jsonify(diagnostics_info), 200
+        return jsonify(info), 200
 
     except Exception as e:
-        logger.error(f"Diagnostics error: {str(e)}")
-        return jsonify({
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
+        logger.error(str(e))
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
+# ---------------------------------------------------------------
+# MAIN QUERY ROUTE (working version)
+# ---------------------------------------------------------------
 @app.route('/api/v1/testq', methods=['GET', 'POST'])
 def test_question():
+
     try:
+        # Get question
         if request.method == 'GET':
             question = request.args.get('question')
         else:
-            data = request.get_json(silent=True)
-            question = data.get('question') if data else None
+            body = request.get_json(silent=True)
+            question = body.get('question') if body else None
 
         if not question:
             return jsonify({
-                'error': 'Missing question parameter',
-                'usage': {
-                    'GET': '/api/v1/testq?question=Your question here',
-                    'POST': '{"question": "Your question here"}'
-                }
+                "error": "Missing question parameter",
+                "example": "/api/v1/testq?question=What is diabetes"
             }), 400
 
-        logger.info(f"Received question: {question}")
-        logger.info(f"Vector store path: {vecstore_path}")
+        logger.info(f"📩 Received question: {question}")
 
-        if not os.path.exists(vecstore_path):
-            logger.error(f"Vector store path does not exist: {vecstore_path}")
+        # Ensure RAG system is loaded
+        if RAG_SYSTEM is None:
+            logger.error("❌ RAG not initialized")
             return jsonify({
-                'error': 'Vector store not found',
-                'path': vecstore_path,
-                'message': 'GCS Fuse mount not found. Check Cloud Run > Volumes.'
+                "error": "RAG system not initialized",
+                "message": "Check vector store mount or startup logs"
             }), 500
 
-        memory = psutil.virtual_memory()
-        logger.info(f"Available memory: {memory.available / (1024**3):.2f} GB")
-
-        if memory.available < 2 * 1024**3:
-            return jsonify({
-                'error': 'Insufficient memory',
-                'available_gb': round(memory.available / (1024**3), 2),
-                'total_gb': round(memory.total / (1024**3), 2),
-                'message': 'Increase Cloud Run memory allocation.'
-            }), 507
-
-        logger.info("Initializing RAG system...")
-        try:
-            system = RAGQASystem(
-                stores_base=vecstore_path,
-                model="gpt-4o"
-            )
-        except MemoryError as me:
-            logger.error(f"Memory error: {str(me)}")
-            return jsonify({
-                'error': 'Memory allocation failed',
-                'message': 'Index too large for current memory'
-            }), 507
-
-        result = system.query(
+        # Execute query
+        result = RAG_SYSTEM.query(
             question=question,
             top_k=10,
             per_shard_k=10,
             include_history=False
         )
 
-        logger.info(f"Query successful. Cost: ${result['cost']:.4f}")
+        logger.info(f"✅ Query successful. Cost: ${result.get('cost', 0):.4f}")
         return jsonify(result), 200
 
     except Exception as e:
-        error_details = traceback.format_exc()
-        logger.error(f"Error: {str(e)}")
-
-        if app.config['DEBUG']:
-            return jsonify({
-                'error': str(e),
-                'traceback': error_details,
-                'vecstore_path': vecstore_path
-            }), 500
-        else:
-            return jsonify({
-                'error': 'Internal server error',
-                'message': str(e),
-                'type': type(e).__name__
-            }), 500
-
-
-@app.route('/api/v1/data', methods=['GET', 'POST'])
-def handle_data():
-    if request.method == 'GET':
+        logger.error(str(e))
         return jsonify({
-            'data': [
-                {'id': 1, 'name': 'Sample 1'},
-                {'id': 2, 'name': 'Sample 2'}
-            ]
-        }), 200
+            "error": "Internal server error",
+            "message": str(e),
+            "trace": traceback.format_exc() if app.config['DEBUG'] else None
+        }), 500
 
-    elif request.method == 'POST':
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
 
-        return jsonify({
-            'message': 'Data received successfully',
-            'received_data': data
-        }), 201
+# ---------------------------------------------------------------
+# Additional routes
+# ---------------------------------------------------------------
+@app.route('/api/v1/data', methods=['GET'])
+def get_data():
+    return jsonify({"data": [{"id": 1}, {"id": 2}]})
 
 
 @app.errorhandler(404)
-def not_found(error):
-    logger.warning(f"404 error: {request.url}")
-    return jsonify({'error': 'Resource not found'}), 404
+def not_found(e):
+    return jsonify({"error": "Not Found"}), 404
 
 
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"500 error: {str(error)}")
-    return jsonify({
-        'error': 'Internal server error',
-        'message': str(error) if app.config['DEBUG'] else 'An error occurred'
-    }), 500
-
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
+# ---------------------------------------------------------------
+# MAIN ENTRY
+# ---------------------------------------------------------------
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
