@@ -8,7 +8,8 @@ import os
 import logging
 from flask_cors import CORS
 from src.rag_qa_enhanced import RAGQASystem
-from src.firestore_service import save_chat  # <-- Firestore logging integration
+from services.firestore_service import save_chat
+
 
 # Load environment variables
 load_dotenv()
