@@ -1,6 +1,8 @@
 Flask==3.0.0
 python-dotenv==1.0.0
+flask-cors==4.0.0
 
+# AI / RAG dependencies
 numpy
 torch
 transformers
@@ -14,6 +16,8 @@ scikit-learn
 joblib
 psutil
 
+# Firebase Firestore
 google-cloud-firestore
 google-auth
 google-auth-oauthlib
+google-auth-httplib2
