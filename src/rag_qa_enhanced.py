@@ -17,13 +17,13 @@ from src.utils.pdf_reader import read_pdf, read_text_file
 from src.utils.text_chunker import chunk_text as chunk_text_fn
 
 try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_openai import ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
     from langchain_community.callbacks import get_openai_callback
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False
-    print("Warning: LangChain not available. Install with: pip install langchain langchain-google-genai langchain-community")
+    print("Warning: LangChain not available. Install with: pip install langchain langchain-openai langchain-community")
 
 
 SYSTEM_PROMPT = (
@@ -61,7 +61,7 @@ SYSTEM_PROMPT = (
 class RAGQASystem:
     """Enhanced RAG QA system with conversation history and cost tracking."""
     
-    def __init__(self, stores_base: str, model: str = "gemini-pro", chunk_chars: int = 1500, overlap: int = 200):
+    def __init__(self, stores_base: str, model: str = "gpt-4o", chunk_chars: int = 1500, overlap: int = 200):
         self.stores_base = stores_base
         self.model = model
         self.chunk_chars = chunk_chars
@@ -74,13 +74,13 @@ class RAGQASystem:
         load_dotenv()
 
         if not LANGCHAIN_AVAILABLE:
-            raise ImportError("LangChain is required. Install with: pip install langchain langchain-google-genai")
+            raise ImportError("LangChain is required. Install with: pip install langchain langchain-openai")
         
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("GOOGLE_API_KEY is not set. Set it in your environment or in a .env file at project root.")
+            raise RuntimeError("OPENAI_API_KEY is not set. Set it in your environment or in a .env file at project root.")
 
-        self.llm = ChatGoogleGenerativeAI(model=model, temperature=0, google_api_key=api_key)
+        self.llm = ChatOpenAI(model=model, temperature=0, api_key=api_key)
         self.stores = self._find_stores()
         
     def _find_stores(self) -> List[Path]:

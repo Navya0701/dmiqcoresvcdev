@@ -6,12 +6,14 @@ torch
 transformers
 faiss-cpu
 langchain>=1.0.0
-langchain-google-genai>=0.0.1
+langchain-openai>=1.0.0
 langchain-community>=0.4.0
-python-dotenv
 PyPDF2
 pycryptodome
 scikit-learn
 joblib
 psutil
-google-generativeai>=0.3.0
+
+google-cloud-firestore
+google-auth
+google-auth-oauthlib
