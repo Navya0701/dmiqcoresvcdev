@@ -1,7 +1,7 @@
-# Use the official lightweight Python image.
+# Use the official lightweight Python image
 FROM python:3.11-slim
 
-# Set work directory
+# Working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -10,18 +10,17 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (so Docker caching works)
+# Copy dependency file
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the code
+# Copy app code
 COPY . .
 
-# Expose port 8080 for Cloud Run
+# Set dynamic port for Cloud Run
 ENV PORT=8080
-EXPOSE 8080
 
-# Run the Flask app
-CMD ["python", "app.py"]
+# Use Gunicorn for production server
+CMD exec gunicorn --bind "0.0.0.0:${PORT}" app:app

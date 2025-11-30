@@ -21,3 +21,6 @@ google-cloud-firestore
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+
+# Production WSGI Server
+gunicorn

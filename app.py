@@ -1,6 +1,5 @@
 """
 DMIQ Core Service - Flask API Application
-This is the service that the front end app calls
 """
 from flask import Flask, jsonify, request
 from dotenv import load_dotenv
@@ -8,95 +7,118 @@ import os
 import logging
 from flask_cors import CORS
 from src.rag_qa_enhanced import RAGQASystem
-from services.firestore_service import save_chat
+from services.firestore_service import create_thread, save_message, get_threads, get_messages
 
-
-# Load environment variables
+# Load ENV variables
 load_dotenv()
 
-# Initialize Flask
 app = Flask(__name__)
-app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+app.config['DEBUG'] = os.getenv("FLASK_DEBUG", "False").lower() == "true"
 
-# CORS Configuration (allow all for now)
+# Enable CORS for frontend
 CORS(app, origins="*", supports_credentials=True)
 
-# Logging config
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Vector Store Path
-vecstore_path = os.getenv('VECSTORE_PATH', '/mnt/medical_data')
-logger.info(f"Vector store path: {vecstore_path}")
+# Vector DB path
+vecstore_path = os.getenv("VECSTORE_PATH", "/mnt/medical_data")
 
-# Initialize RAG System ONCE
+# Initialize RAG System
 RAG_SYSTEM = None
 try:
-    logger.info("🔄 Initializing RAG system...")
-    if not os.path.exists(vecstore_path):
-        logger.warning(f"⚠️ Vector store path does not exist: {vecstore_path}")
+    if os.path.exists(vecstore_path):
+        RAG_SYSTEM = RAGQASystem(stores_base=vecstore_path, model="gpt-4o")
+        logger.info("🔥 RAG Initialized Successfully!")
     else:
-        RAG_SYSTEM = RAGQASystem(
-            stores_base=vecstore_path,
-            model="gpt-4o"
-        )
-        logger.info("🚀 RAG system initialized successfully")
+        logger.warning(f"⚠ Vector DB not found: {vecstore_path}")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize RAG: {str(e)}")
+    logger.error(f"❌ RAG Startup Failed: {e}")
 
-# Default route
+
 @app.route('/')
-def index():
-    return jsonify({"service": "DMIQ Core Service", "status": "running"}), 200
+def home():
+    return jsonify({"status": "DeepMedIQ Backend Running"}), 200
 
-# Test Question → Query AI + Save Chat
-@app.route('/api/v1/testq', methods=['GET'])
-def test_question():
+
+@app.get('/api/query')
+def ai_query():
+    question = request.args.get("question")
+
+    if not question:
+        return jsonify({"error": "Missing question"}), 400
+
+    logger.info(f"📩 Query Received: {question}")
     try:
-        question = request.args.get('question')
-        if not question:
-            return jsonify({"error": "Missing question parameter"}), 400
-
-        logger.info(f"📩 Received question: {question}")
-
-        # Query RAG
         result = RAG_SYSTEM.query(
             question=question,
             top_k=10,
-            per_shard_k=10,
-            include_history=False,
+            include_history=False
         )
-        logger.info("🤖 RAG Query completed")
-
-        # Extract answer for logging
-        answer = result.get("answer", "No answer returned")
-
-        # Save to Firestore
-        try:
-            save_chat(
-                user_id="anonymous",
-                question=question,
-                answer=answer
-            )
-            logger.info("🔥 Chat saved to Firestore")
-        except Exception as firestore_error:
-            logger.error(f"❌ Firestore write failed: {firestore_error}")
-
         return jsonify(result), 200
-
     except Exception as e:
-        logger.error(f"❌ Error handling request: {e}")
-        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
+        logger.error(f"❌ AI Query Failed: {e}")
+        return jsonify({"error": "AI Query Failed", "details": str(e)}), 500
 
-# 404 Handler
+
+@app.post("/threads")
+def api_create_thread():
+    data = request.get_json()
+    user_id = data.get("userId")
+
+    if not user_id:
+        return jsonify({"error": "userId required"}), 400
+
+    thread_id = create_thread(user_id)
+    logger.info(f"🧵 Thread Created → {thread_id}")
+
+    return jsonify({"threadId": thread_id}), 200
+
+
+@app.get("/threads")
+def api_get_threads():
+    user_id = request.args.get("userId")
+
+    if not user_id:
+        return jsonify({"error": "userId required"}), 400
+
+    return jsonify(get_threads(user_id)), 200
+
+
+
+
+@app.get("/threads/<thread_id>/messages")
+def api_get_messages(thread_id):
+    user_id = request.args.get("userId")
+
+    if not user_id:
+        return jsonify({"error": "userId required"}), 400
+
+    return jsonify(get_messages(user_id, thread_id)), 200
+
+
+
+@app.post("/messages")
+def api_add_message():
+    data = request.get_json()
+
+    user_id = data.get("userId")
+    thread_id = data.get("threadId")
+    role = data.get("role")
+    content = data.get("content")
+
+    if not user_id or not thread_id or not role or not content:
+        return jsonify({"error": "Missing fields"}), 400
+
+    save_message(user_id, thread_id, role, content)
+    logger.info("💬 Message Saved to Firestore")
+
+    return jsonify({"status": "saved"}), 200
+
+
 @app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Not Found"}), 404
+def not_found(_):
+    return jsonify({"error": "Route Not Found"}), 404
 
-# Run server
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+
