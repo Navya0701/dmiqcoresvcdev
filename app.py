@@ -98,22 +98,18 @@ def api_get_messages(thread_id):
     return jsonify(get_messages(user_id, thread_id)), 200
 
 
-
-@app.post("/messages")
-def api_add_message():
+@app.post("/threads/<thread_id>/messages")
+def api_add_message(thread_id):
     data = request.get_json()
-
     user_id = data.get("userId")
-    thread_id = data.get("threadId")
     role = data.get("role")
     content = data.get("content")
 
-    if not user_id or not thread_id or not role or not content:
+    if not user_id or not role or not content:
         return jsonify({"error": "Missing fields"}), 400
 
     save_message(user_id, thread_id, role, content)
-    logger.info("💬 Message Saved to Firestore")
-
+    logger.info(f"💬 Message Saved Under Thread {thread_id}")
     return jsonify({"status": "saved"}), 200
 
 
